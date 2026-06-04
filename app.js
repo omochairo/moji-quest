@@ -329,8 +329,11 @@ function speakCharacter(char, bypassToggle = false) {
   // すでに喋っているのをキャンセル
   window.speechSynthesis.cancel();
 
-  const utterance = new SpeechSynthesisUtterance(char);
+  // 英語モードの時は大文字読み（capital A等）を避けるため、すべて小文字に変換して発音させる
   const isEnglish = state.charType.startsWith('english');
+  const textToSpeak = isEnglish ? char.toLowerCase() : char;
+
+  const utterance = new SpeechSynthesisUtterance(textToSpeak);
 
   if (isEnglish) {
     if (speechVoiceEn) utterance.voice = speechVoiceEn;

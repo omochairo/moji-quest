@@ -546,19 +546,20 @@ body {
 }
 
 .card-character {
-  font-size: 8rem;
+  font-size: 15rem;
   font-weight: 900;
   color: var(--text-dark);
   user-select: none;
   text-shadow: 4px 4px 0px rgba(255, 255, 255, 0.8);
   /* より柔らかい印象にするため丸ゴシックを適用 */
   font-family: var(--font-primary);
-  margin-top: 15px;
+  margin-top: 10px;
+  line-height: 1;
 }
 
 /* 文字によって少し大きさを微調整 */
 .card-character:has(span) {
-  font-size: 7rem;
+  font-size: 13rem;
 }
 
 .card-voice-hint {

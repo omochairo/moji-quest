@@ -1,8 +1,8 @@
 // ==========================================================================
-// moji-quest - ひらがなカードアプリ ロジック
+// moji-quest - ひらがな・カタカナ・えいごカードアプリ ロジック
 // ==========================================================================
 
-// 1. ひらがなデータの定義
+// 1. 文字データの定義
 const KANA_DATA = {
   a: { name: 'あ行', chars: ['あ', 'い', 'う', 'え', 'お'] },
   ka: { name: 'か行', chars: ['か', 'き', 'く', 'け', 'こ'] },
@@ -26,6 +26,13 @@ const KANA_DATA = {
   }
 };
 
+const ENG_DATA = {
+  a: { name: 'A〜G', chars: ['A', 'B', 'C', 'D', 'E', 'F', 'G'] },
+  ka: { name: 'H〜N', chars: ['H', 'I', 'J', 'K', 'L', 'M', 'N'] },
+  sa: { name: 'O〜T', chars: ['O', 'P', 'Q', 'R', 'S', 'T'] },
+  ta: { name: 'U〜Z', chars: ['U', 'V', 'W', 'X', 'Y', 'Z'] }
+};
+
 // 行ごとのテーマカラー定義
 const ROW_THEMES = {
   a: { main: '#ff6b6b', light: '#ffebee' },
@@ -46,7 +53,8 @@ let state = {
   selectedRows: ['a', 'ka'], // 初期値はあ行・か行
   sessionCharacters: [],      // 今回プレイするシャッフルされた文字リスト
   currentIndex: 0,            // 現在のカード位置
-  charType: 'hiragana',       // 文字モード: hiragana / katakana
+  charType: 'hiragana',       // 文字モード: hiragana / katakana / english_upper / english_lower
+  playMode: '5',              // プレイモード: 5 (5問で終了) / all (全部) / endless (無限)
   voiceEnabled: false,        // 音声読み上げON/OFF（初期OFFに変更）
   voiceOnTapEnabled: true     // タップ時の音声読み上げ（初期ON）
 };
@@ -59,6 +67,8 @@ const screenClear = document.getElementById('screen-clear');
 const gridJapaneseRows = document.getElementById('grid-japanese-rows');
 const checkBoxes = document.querySelectorAll('input[name="kana-row"]');
 const radioCharTypes = document.querySelectorAll('input[name="char-type"]');
+const radioPlayModes = document.querySelectorAll('input[name="play-mode"]');
+const gridExtraRows = document.getElementById('grid-extra-rows');
 const btnSelectAll = document.getElementById('btn-select-all');
 const btnClearAll = document.getElementById('btn-clear-all');
 const settingVoiceRead = document.getElementById('setting-voice-read');
@@ -92,7 +102,12 @@ function init() {
 function setupEventListeners() {
   // すべて選ぶ・リセット
   btnSelectAll.addEventListener('click', () => {
-    checkBoxes.forEach(cb => cb.checked = true);
+    checkBoxes.forEach(cb => {
+      const parentLabel = cb.closest('.row-checkbox-label');
+      if (parentLabel && parentLabel.style.display !== 'none') {
+        cb.checked = true;
+      }
+    });
     syncSettingsFromDOM();
   });
   
@@ -108,6 +123,11 @@ function setupEventListeners() {
 
   // もじのしゅるいラジオボタンの変更同期
   radioCharTypes.forEach(radio => {
+    radio.addEventListener('change', syncSettingsFromDOM);
+  });
+
+  // もんだい数ラジオボタンの変更同期
+  radioPlayModes.forEach(radio => {
     radio.addEventListener('change', syncSettingsFromDOM);
   });
 
@@ -149,20 +169,11 @@ function setupEventListeners() {
 
 // 設定をDOMから読み込み
 function syncSettingsFromDOM() {
-  const activeRows = [];
-  checkBoxes.forEach(cb => {
-    if (cb.checked) {
-      activeRows.push(cb.value);
-    }
-  });
-  state.selectedRows = activeRows;
-  state.voiceEnabled = settingVoiceRead.checked;
-  state.voiceOnTapEnabled = settingVoiceTap.checked;
-
+  // 1. もじのしゅるい同期
   const selectedRadio = document.querySelector('input[name="char-type"]:checked');
   state.charType = selectedRadio ? selectedRadio.value : 'hiragana';
 
-  // ラジオボタンの見た目（activeクラス）を更新
+  // もじのしゅるいアクティブクラス更新
   radioCharTypes.forEach(radio => {
     const label = radio.closest('.btn-toggle-label');
     if (label) {
@@ -174,19 +185,98 @@ function syncSettingsFromDOM() {
     }
   });
 
-  // プレビューテキストのカタカナ化/ひらがな化
-  const rowPreviewEls = document.querySelectorAll('.row-preview');
-  rowPreviewEls.forEach(el => {
-    const originalText = el.getAttribute('data-original') || el.innerText;
-    if (!el.getAttribute('data-original')) {
-      el.setAttribute('data-original', originalText);
-    }
-    if (state.charType === 'katakana') {
-      el.innerText = toKatakana(originalText);
-    } else {
-      el.innerText = originalText;
+  // 2. もんだい数同期
+  const selectedPlayMode = document.querySelector('input[name="play-mode"]:checked');
+  state.playMode = selectedPlayMode ? selectedPlayMode.value : '5';
+
+  // もんだい数アクティブクラス更新
+  radioPlayModes.forEach(radio => {
+    const label = radio.closest('.btn-toggle-label');
+    if (label) {
+      if (radio.checked) {
+        label.classList.add('active');
+      } else {
+        label.classList.remove('active');
+      }
     }
   });
+
+  // 3. 音声設定の同期
+  state.voiceEnabled = settingVoiceRead.checked;
+  state.voiceOnTapEnabled = settingVoiceTap.checked;
+
+  // 4. 文字の種類に応じたチェックボックスと表示名の動的書き換え
+  const isEnglish = state.charType.startsWith('english');
+  
+  if (isEnglish) {
+    if (gridExtraRows) gridExtraRows.style.display = 'none';
+
+    checkBoxes.forEach(cb => {
+      const parentLabel = cb.closest('.row-checkbox-label');
+      if (!parentLabel) return;
+
+      const rowKey = cb.value;
+      if (ENG_DATA[rowKey]) {
+        parentLabel.style.display = 'flex';
+        const nameEl = parentLabel.querySelector('.row-name');
+        const previewEl = parentLabel.querySelector('.row-preview');
+        
+        let nameText = ENG_DATA[rowKey].name;
+        let previewText = ENG_DATA[rowKey].chars.join('');
+
+        if (state.charType === 'english_lower') {
+          nameText = nameText.toLowerCase();
+          previewText = previewText.toLowerCase();
+        }
+        
+        if (nameEl) nameEl.innerText = nameText;
+        if (previewEl) {
+          previewEl.setAttribute('data-original', previewText);
+          previewEl.innerText = previewText;
+        }
+      } else {
+        parentLabel.style.display = 'none';
+        cb.checked = false;
+      }
+    });
+  } else {
+    if (gridExtraRows) gridExtraRows.style.display = 'block';
+
+    checkBoxes.forEach(cb => {
+      const parentLabel = cb.closest('.row-checkbox-label');
+      if (!parentLabel) return;
+
+      const rowKey = cb.value;
+      parentLabel.style.display = 'flex';
+
+      if (KANA_DATA[rowKey]) {
+        const nameEl = parentLabel.querySelector('.row-name');
+        const previewEl = parentLabel.querySelector('.row-preview');
+        
+        let nameText = KANA_DATA[rowKey].name;
+        let previewText = KANA_DATA[rowKey].chars.join('');
+
+        if (state.charType === 'katakana') {
+          previewText = toKatakana(previewText);
+        }
+
+        if (nameEl) nameEl.innerText = nameText;
+        if (previewEl) {
+          previewEl.setAttribute('data-original', previewText);
+          previewEl.innerText = previewText;
+        }
+      }
+    });
+  }
+
+  // 選択された行の集計
+  const activeRows = [];
+  checkBoxes.forEach(cb => {
+    if (cb.checked) {
+      activeRows.push(cb.value);
+    }
+  });
+  state.selectedRows = activeRows;
 
   // スタートボタンの有効化/無効化
   if (state.selectedRows.length === 0) {
@@ -201,7 +291,8 @@ function syncSettingsFromDOM() {
 }
 
 // 6. 音声合成 (Web Speech API)
-let speechVoice = null;
+let speechVoiceJa = null;
+let speechVoiceEn = null;
 let speechActivated = false;
 
 function initSpeechSynthesis() {
@@ -219,11 +310,10 @@ function initSpeechSynthesis() {
 function loadVoice() {
   if (!('speechSynthesis' in window)) return;
   
-  // 日本語かつ、より子ども向けに適したキュートな音声を探す
   const setVoice = () => {
     const voices = window.speechSynthesis.getVoices();
-    // 日本語の音声を優先
-    speechVoice = voices.find(v => v.lang === 'ja-JP' || v.lang.includes('ja')) || null;
+    speechVoiceJa = voices.find(v => v.lang === 'ja-JP' || v.lang.includes('ja')) || null;
+    speechVoiceEn = voices.find(v => v.lang === 'en-US' || v.lang.startsWith('en')) || null;
   };
 
   setVoice();
@@ -240,13 +330,19 @@ function speakCharacter(char, bypassToggle = false) {
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(char);
-  if (speechVoice) {
-    utterance.voice = speechVoice;
+  const isEnglish = state.charType.startsWith('english');
+
+  if (isEnglish) {
+    if (speechVoiceEn) utterance.voice = speechVoiceEn;
+    utterance.lang = 'en-US';
+    utterance.pitch = 1.15;
+    utterance.rate = 0.85;
+  } else {
+    if (speechVoiceJa) utterance.voice = speechVoiceJa;
+    utterance.lang = 'ja-JP';
+    utterance.pitch = 1.35;
+    utterance.rate = 0.85;
   }
-  
-  // 子供が聞き取りやすい設定 (高めで少しゆっくり)
-  utterance.pitch = 1.35; // 高めのキュートな声
-  utterance.rate = 0.85;  // 少しゆっくり
 
   window.speechSynthesis.speak(utterance);
 }
@@ -262,13 +358,20 @@ function speakCurrentCharacter(bypassToggle = false) {
 function startSession() {
   if (state.selectedRows.length === 0) return;
 
+  const isEnglish = state.charType.startsWith('english');
+  const dataSource = isEnglish ? ENG_DATA : KANA_DATA;
+
   // 1. 文字リストの構築
   let charsToPlay = [];
   state.selectedRows.forEach(rowKey => {
-    if (KANA_DATA[rowKey]) {
-      KANA_DATA[rowKey].chars.forEach(c => {
+    if (dataSource[rowKey]) {
+      dataSource[rowKey].chars.forEach(c => {
+        let charValue = c;
+        if (state.charType === 'english_lower') {
+          charValue = c.toLowerCase();
+        }
         charsToPlay.push({
-          char: c,
+          char: charValue,
           row: rowKey
         });
       });
@@ -277,35 +380,51 @@ function startSession() {
 
   // 2. シャッフル (Fisher-Yates)
   shuffleArray(charsToPlay);
-  state.sessionCharacters = charsToPlay;
+  
+  // 3. プレイモードに応じた切り出し (無限モード時は全件をループベースとして使用)
+  if (state.playMode === '5') {
+    state.sessionCharacters = charsToPlay.slice(0, 5);
+  } else {
+    state.sessionCharacters = charsToPlay;
+  }
+  
   state.currentIndex = 0;
 
-  // 3. 画面の更新と表示
+  // 4. 画面の更新と表示
   showScreen('play');
   updateCardUI();
 
   // 最初の文字を発音
-  // 短いタイムアウトを入れることで、画面遷移アニメーションと重ならないようにする
   setTimeout(() => {
     speakCurrentCharacter();
   }, 400);
 }
 
 function showNextCard() {
-  triggerCelebrationConfetti(); // 読めたお祝いに軽い紙吹雪
+  triggerCelebrationConfetti();
 
   state.currentIndex++;
-  if (state.currentIndex >= state.sessionCharacters.length) {
-    // すべて終了！クリア画面へ
-    setTimeout(() => {
-      showClearScreen();
-    }, 500);
-  } else {
+  
+  if (state.playMode === 'endless') {
+    if (state.currentIndex >= state.sessionCharacters.length) {
+      shuffleArray(state.sessionCharacters);
+      state.currentIndex = 0;
+    }
     updateCardUI();
-    // 次の文字を発音
     setTimeout(() => {
       speakCurrentCharacter();
     }, 300);
+  } else {
+    if (state.currentIndex >= state.sessionCharacters.length) {
+      setTimeout(() => {
+        showClearScreen();
+      }, 500);
+    } else {
+      updateCardUI();
+      setTimeout(() => {
+        speakCurrentCharacter();
+      }, 300);
+    }
   }
 }
 
@@ -317,11 +436,24 @@ function updateCardUI() {
     charToShow = toKatakana(charToShow);
   }
   displayCharacter.innerText = charToShow;
+
+  // 英語は文字幅が広めなので、はみ出し防止のためフォントサイズをやや小さく(12rem)
+  const isEnglish = state.charType.startsWith('english');
+  if (isEnglish) {
+    displayCharacter.style.fontSize = '12rem';
+  } else {
+    displayCharacter.style.fontSize = '15rem';
+  }
   
   // 残り枚数の更新
-  progressIndicator.innerText = `${state.currentIndex + 1} / ${state.sessionCharacters.length}`;
-  const progressPercent = ((state.currentIndex) / state.sessionCharacters.length) * 100;
-  progressBar.style.width = `${progressPercent}%`;
+  if (state.playMode === 'endless') {
+    progressIndicator.innerText = `よんだかず: ${state.currentIndex + 1}もん`;
+    progressBar.style.width = `100%`;
+  } else {
+    progressIndicator.innerText = `${state.currentIndex + 1} / ${state.sessionCharacters.length}`;
+    const progressPercent = ((state.currentIndex) / state.sessionCharacters.length) * 100;
+    progressBar.style.width = `${progressPercent}%`;
+  }
 
   // タップ音声設定に応じてヒントの表示・非表示を切り替え
   if (state.voiceOnTapEnabled) {

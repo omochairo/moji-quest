@@ -46,7 +46,8 @@ let state = {
   selectedRows: ['a', 'ka'], // 初期値はあ行・か行
   sessionCharacters: [],      // 今回プレイするシャッフルされた文字リスト
   currentIndex: 0,            // 現在のカード位置
-  voiceEnabled: true          // 音声読み上げON/OFF
+  voiceEnabled: false,        // 音声読み上げON/OFF（初期OFFに変更）
+  voiceOnTapEnabled: true     // タップ時の音声読み上げ（初期ON）
 };
 
 // 3. DOM要素
@@ -59,6 +60,7 @@ const checkBoxes = document.querySelectorAll('input[name="kana-row"]');
 const btnSelectAll = document.getElementById('btn-select-all');
 const btnClearAll = document.getElementById('btn-clear-all');
 const settingVoiceRead = document.getElementById('setting-voice-read');
+const settingVoiceTap = document.getElementById('setting-voice-tap');
 const btnStart = document.getElementById('btn-start');
 
 const btnBackToSetup = document.getElementById('btn-back-to-setup');
@@ -67,6 +69,7 @@ const progressBar = document.getElementById('progress-bar');
 const displayCharacter = document.getElementById('display-character');
 const cardElement = document.getElementById('card-element');
 const cardTriggerArea = document.getElementById('card-trigger-area');
+const voiceHint = document.getElementById('voice-hint');
 const btnNext = document.getElementById('btn-next');
 
 const clearCount = document.getElementById('clear-count');
@@ -105,6 +108,9 @@ function setupEventListeners() {
   settingVoiceRead.addEventListener('change', () => {
     state.voiceEnabled = settingVoiceRead.checked;
   });
+  settingVoiceTap.addEventListener('change', () => {
+    state.voiceOnTapEnabled = settingVoiceTap.checked;
+  });
 
   // スタートボタン
   btnStart.addEventListener('click', startSession);
@@ -114,15 +120,15 @@ function setupEventListeners() {
 
   // もどるボタン
   btnBackToSetup.addEventListener('click', () => {
-    if (confirm('レッスンをやめて、はじめの画面にもどる？')) {
-      showScreen('setup');
-    }
+    showScreen('setup');
   });
 
   // カードタップで再発音 & アニメーション
   cardTriggerArea.addEventListener('click', () => {
     triggerCardAnimation();
-    speakCurrentCharacter();
+    if (state.voiceOnTapEnabled) {
+      speakCurrentCharacter();
+    }
   });
 
   // クリア画面のアクション
@@ -144,6 +150,7 @@ function syncSettingsFromDOM() {
   });
   state.selectedRows = activeRows;
   state.voiceEnabled = settingVoiceRead.checked;
+  state.voiceOnTapEnabled = settingVoiceTap.checked;
 
   // スタートボタンの有効化/無効化
   if (state.selectedRows.length === 0) {
@@ -274,6 +281,13 @@ function updateCardUI() {
   progressIndicator.innerText = `${state.currentIndex + 1} / ${state.sessionCharacters.length}`;
   const progressPercent = ((state.currentIndex) / state.sessionCharacters.length) * 100;
   progressBar.style.width = `${progressPercent}%`;
+
+  // タップ音声設定に応じてヒントの表示・非表示を切り替え
+  if (state.voiceOnTapEnabled) {
+    voiceHint.style.display = 'flex';
+  } else {
+    voiceHint.style.display = 'none';
+  }
 
   // テーマカラーの動的変更
   const theme = ROW_THEMES[currentObj.row] || ROW_THEMES.a;

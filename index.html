@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>もじカード - ひらがなレッスン</title>
+  <meta name="description" content="3歳・4歳向けひらがな学習カードアプリ。ランダムに表示される大きな文字で、親子で楽しくあいうえおを覚えられます。">
+  
+  <!-- Google Fonts: Zen Maru Gothic & Mochiy Pop One -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Mochiy+Pop+One&family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind/CSS -->
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- Canvas Confetti for celebration animations -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+</head>
+<body>
+  <div id="app" class="app-container">
+    
+    <!-- ========================================== -->
+    <!-- 1. 設定・スタート画面                       -->
+    <!-- ========================================== -->
+    <section id="screen-setup" class="screen active">
+      <header class="app-header">
+        <h1 class="app-title">
+          <span class="title-char c1">も</span>
+          <span class="title-char c2">じ</span>
+          <span class="title-char c3">か</span>
+          <span class="title-char c4">ー</span>
+          <span class="title-char c5">ど</span>
+        </h1>
+        <p class="app-subtitle">おやこで たのしく ひらがなレッスン♪</p>
+      </header>
+
+      <main class="setup-main">
+        <div class="card setup-card">
+          <h2 class="section-title">✨ レッスンする 行を えらぼう</h2>
+          
+          <div class="selection-actions">
+            <button type="button" id="btn-select-all" class="btn btn-outline-sm">すべてえらぶ</button>
+            <button type="button" id="btn-clear-all" class="btn btn-outline-sm">リセット</button>
+          </div>
+
+          <div class="row-grid" id="grid-japanese-rows">
+            <!-- JavaScriptで動的に生成、または定義 -->
+            <label class="row-checkbox-label" data-row="a">
+              <input type="checkbox" name="kana-row" value="a" checked>
+              <span class="checkbox-custom"></span>
+              <span class="row-name">あ行</span>
+              <span class="row-preview">あいうえお</span>
+            </label>
+            <label class="row-checkbox-label" data-row="ka">
+              <input type="checkbox" name="kana-row" value="ka" checked>
+              <span class="checkbox-custom"></span>
+              <span class="row-name">か行</span>
+              <span class="row-preview">かきくけこ</span>
+            </label>
+            <label class="row-checkbox-label" data-row="sa">
+              <input type="checkbox" name="kana-row" value="sa">
+              <span class="checkbox-custom"></span>
+              <span class="row-name">さ行</span>
+              <span class="row-preview">さしすせそ</span>
+            </label>
+            <label class="row-checkbox-label" data-row="ta">
+              <input type="checkbox" name="kana-row" value="ta">
+              <span class="checkbox-custom"></span>
+              <span class="row-name">た行</span>
+              <span class="row-preview">たちつてと</span>
+            </label>
+            <label class="row-checkbox-label" data-row="na">
+              <input type="checkbox" name="kana-row" value="na">
+              <span class="checkbox-custom"></span>
+              <span class="row-name">な行</span>
+              <span class="row-preview">なにぬねの</span>
+            </label>
+            <label class="row-checkbox-label" data-row="ha">
+              <input type="checkbox" name="kana-row" value="ha">
+              <span class="checkbox-custom"></span>
+              <span class="row-name">は行</span>
+              <span class="row-preview">はひふへほ</span>
+            </label>
+            <label class="row-checkbox-label" data-row="ma">
+              <input type="checkbox" name="kana-row" value="ma">
+              <span class="checkbox-custom"></span>
+              <span class="row-name">ま行</span>
+              <span class="row-preview">まみむめも</span>
+            </label>
+            <label class="row-checkbox-label" data-row="ya">
+              <input type="checkbox" name="kana-row" value="ya">
+              <span class="checkbox-custom"></span>
+              <span class="row-name">や行</span>
+              <span class="row-preview">やゆよ</span>
+            </label>
+            <label class="row-checkbox-label" data-row="ra">
+              <input type="checkbox" name="kana-row" value="ra">
+              <span class="checkbox-custom"></span>
+              <span class="row-name">ら行</span>
+              <span class="row-preview">らりるれろ</span>
+            </label>
+            <label class="row-checkbox-label" data-row="wa">
+              <input type="checkbox" name="kana-row" value="wa">
+              <span class="checkbox-custom"></span>
+              <span class="row-name">わ行</span>
+              <span class="row-preview">わをん</span>
+            </label>
+          </div>
+
+          <div class="row-grid-extra" id="grid-extra-rows">
+            <h3 class="subsection-title">おぷしょん</h3>
+            <div class="extra-options">
+              <label class="row-checkbox-label dakuon" data-row="dakuon">
+                <input type="checkbox" name="kana-row" value="dakuon">
+                <span class="checkbox-custom"></span>
+                <span class="row-name">がぎぐげご〜</span>
+                <span class="row-preview">だくおん・はんだくおん</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="settings-voice">
+            <h3 class="subsection-title">こえの 設定</h3>
+            <label class="toggle-switch">
+              <input type="checkbox" id="setting-voice-read" checked>
+              <span class="slider"></span>
+              <span class="toggle-label">カードがでたとき 音声でよむ</span>
+            </label>
+          </div>
+        </div>
+      </main>
+
+      <footer class="setup-footer">
+        <button type="button" id="btn-start" class="btn btn-primary btn-lg">はじめる！ 🚀</button>
+      </footer>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- 2. カードプレイ画面                         -->
+    <!-- ========================================== -->
+    <section id="screen-play" class="screen">
+      <header class="play-header">
+        <button type="button" id="btn-back-to-setup" class="btn btn-outline-sm btn-icon-back">
+          <span>🏠 もどる</span>
+        </button>
+        <div class="progress-container">
+          <span class="progress-text" id="progress-indicator">0 / 0</span>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progress-bar" style="width: 0%;"></div>
+          </div>
+        </div>
+      </header>
+
+      <main class="play-main">
+        <div class="card-outer" id="card-trigger-area">
+          <div class="card-inner" id="card-element">
+            <span class="card-character" id="display-character">あ</span>
+            <span class="card-voice-hint" id="voice-hint">タップでこえをきく 🔊</span>
+          </div>
+        </div>
+      </main>
+
+      <footer class="play-footer">
+        <button type="button" id="btn-next" class="btn btn-success btn-huge">
+          できた！つぎへ ➔
+        </button>
+      </footer>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- 3. がんばったね！クリア画面                  -->
+    <!-- ========================================== -->
+    <section id="screen-clear" class="screen">
+      <main class="clear-main">
+        <div class="clear-mascot">🎉</div>
+        <h1 class="clear-title">できたね！すごーい！</h1>
+        <p class="clear-subtitle">すべての もじを よめました！</p>
+        
+        <div class="clear-stats">
+          <div class="stat-box">
+            <span class="stat-label">よんだもじ</span>
+            <span class="stat-value" id="clear-count">0</span>
+          </div>
+        </div>
+
+        <div class="clear-actions">
+          <button type="button" id="btn-restart" class="btn btn-success btn-lg">もういっかい あそぶ 🔄</button>
+          <button type="button" id="btn-setup" class="btn btn-outline btn-lg">えらびなおす 🏠</button>
+        </div>
+      </main>
+    </section>
+
+  </div>
+  
+  <script src="app.js"></script>
+</body>
+</html>

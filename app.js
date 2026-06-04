@@ -46,6 +46,7 @@ let state = {
   selectedRows: ['a', 'ka'], // 初期値はあ行・か行
   sessionCharacters: [],      // 今回プレイするシャッフルされた文字リスト
   currentIndex: 0,            // 現在のカード位置
+  charType: 'hiragana',       // 文字モード: hiragana / katakana
   voiceEnabled: false,        // 音声読み上げON/OFF（初期OFFに変更）
   voiceOnTapEnabled: true     // タップ時の音声読み上げ（初期ON）
 };
@@ -57,6 +58,7 @@ const screenClear = document.getElementById('screen-clear');
 
 const gridJapaneseRows = document.getElementById('grid-japanese-rows');
 const checkBoxes = document.querySelectorAll('input[name="kana-row"]');
+const radioCharTypes = document.querySelectorAll('input[name="char-type"]');
 const btnSelectAll = document.getElementById('btn-select-all');
 const btnClearAll = document.getElementById('btn-clear-all');
 const settingVoiceRead = document.getElementById('setting-voice-read');
@@ -104,6 +106,11 @@ function setupEventListeners() {
     cb.addEventListener('change', syncSettingsFromDOM);
   });
 
+  // もじのしゅるいラジオボタンの変更同期
+  radioCharTypes.forEach(radio => {
+    radio.addEventListener('change', syncSettingsFromDOM);
+  });
+
   // 音声設定の同期
   settingVoiceRead.addEventListener('change', () => {
     state.voiceEnabled = settingVoiceRead.checked;
@@ -127,7 +134,7 @@ function setupEventListeners() {
   cardTriggerArea.addEventListener('click', () => {
     triggerCardAnimation();
     if (state.voiceOnTapEnabled) {
-      speakCurrentCharacter();
+      speakCurrentCharacter(true); // タップ時はバイパストグルをtrueにする
     }
   });
 
@@ -151,6 +158,35 @@ function syncSettingsFromDOM() {
   state.selectedRows = activeRows;
   state.voiceEnabled = settingVoiceRead.checked;
   state.voiceOnTapEnabled = settingVoiceTap.checked;
+
+  const selectedRadio = document.querySelector('input[name="char-type"]:checked');
+  state.charType = selectedRadio ? selectedRadio.value : 'hiragana';
+
+  // ラジオボタンの見た目（activeクラス）を更新
+  radioCharTypes.forEach(radio => {
+    const label = radio.closest('.btn-toggle-label');
+    if (label) {
+      if (radio.checked) {
+        label.classList.add('active');
+      } else {
+        label.classList.remove('active');
+      }
+    }
+  });
+
+  // プレビューテキストのカタカナ化/ひらがな化
+  const rowPreviewEls = document.querySelectorAll('.row-preview');
+  rowPreviewEls.forEach(el => {
+    const originalText = el.getAttribute('data-original') || el.innerText;
+    if (!el.getAttribute('data-original')) {
+      el.setAttribute('data-original', originalText);
+    }
+    if (state.charType === 'katakana') {
+      el.innerText = toKatakana(originalText);
+    } else {
+      el.innerText = originalText;
+    }
+  });
 
   // スタートボタンの有効化/無効化
   if (state.selectedRows.length === 0) {
@@ -196,8 +232,9 @@ function loadVoice() {
   }
 }
 
-function speakCharacter(char) {
-  if (!state.voiceEnabled || !('speechSynthesis' in window)) return;
+function speakCharacter(char, bypassToggle = false) {
+  if (!('speechSynthesis' in window)) return;
+  if (!bypassToggle && !state.voiceEnabled) return;
 
   // すでに喋っているのをキャンセル
   window.speechSynthesis.cancel();
@@ -214,10 +251,10 @@ function speakCharacter(char) {
   window.speechSynthesis.speak(utterance);
 }
 
-function speakCurrentCharacter() {
+function speakCurrentCharacter(bypassToggle = false) {
   if (state.sessionCharacters.length > 0) {
     const currentCharObj = state.sessionCharacters[state.currentIndex];
-    speakCharacter(currentCharObj.char);
+    speakCharacter(currentCharObj.char, bypassToggle);
   }
 }
 
@@ -275,7 +312,11 @@ function showNextCard() {
 function updateCardUI() {
   const currentObj = state.sessionCharacters[state.currentIndex];
   
-  displayCharacter.innerText = currentObj.char;
+  let charToShow = currentObj.char;
+  if (state.charType === 'katakana') {
+    charToShow = toKatakana(charToShow);
+  }
+  displayCharacter.innerText = charToShow;
   
   // 残り枚数の更新
   progressIndicator.innerText = `${state.currentIndex + 1} / ${state.sessionCharacters.length}`;
@@ -370,9 +411,9 @@ function showClearScreen() {
   showScreen('clear');
   triggerFullClearConfetti();
   
-  // クリアしたよ！のファンファーレボイス（Web Speech）
+  // クリアしたよ！のファンファーレボイス（Web Speech）- 設定にかかわらず発音させる
   setTimeout(() => {
-    speakCharacter('できたね！すごーい！がんばりました！');
+    speakCharacter('できたね！すごーい！がんばりました！', true);
   }, 500);
 }
 
@@ -382,6 +423,14 @@ function shuffleArray(array) {
     const j = Math.floor(Math.random() * (i + 1));
     [array[i], array[j]] = [array[j], array[i]];
   }
+}
+
+// ひらがなからカタカナへの自動変換
+function toKatakana(str) {
+  return str.replace(/[\u3041-\u3096]/g, function(match) {
+    const chr = match.charCodeAt(0) + 0x60;
+    return String.fromCharCode(chr);
+  });
 }
 
 // 起動

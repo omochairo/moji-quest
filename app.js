@@ -14,8 +14,9 @@ const KANA_DATA = {
   ya: { name: 'や行', chars: ['や', 'ゆ', 'よ'] },
   ra: { name: 'ら行', chars: ['ら', 'り', 'る', 'れ', 'ろ'] },
   wa: { name: 'わ行', chars: ['わ', 'を', 'ん'] },
-  dakuon: { 
-    name: 'だくおん', 
+  dakuon: {
+    name: 'だくおん',
+    preview: 'がざだばぱ など',
     chars: [
       'が', 'ぎ', 'ぐ', 'げ', 'ご', 
       'ざ', 'じ', 'ず', 'ぜ', 'ぞ', 
@@ -56,8 +57,12 @@ let state = {
   charType: 'hiragana',       // 文字モード: hiragana / katakana / english_upper / english_lower
   playMode: '5',              // プレイモード: 5 (5問で終了) / all (全部) / endless (無限)
   voiceEnabled: false,        // 音声読み上げON/OFF（初期OFFに変更）
-  voiceOnTapEnabled: true     // タップ時の音声読み上げ（初期ON）
+  voiceOnTapEnabled: true,    // タップ時の音声読み上げ（初期ON）
+  endlessCount: 0,            // むげんモードで出したカードの通算枚数
+  isFinishing: false          //最後のカード後、クリア画面へ遷移中（連打ガード）
 };
+
+const SETTINGS_KEY = 'moji-quest-settings';
 
 // 3. DOM要素
 const screenSetup = document.getElementById('screen-setup');
@@ -90,9 +95,11 @@ const btnSetup = document.getElementById('btn-setup');
 
 // 4. 初期化処理
 function init() {
+  loadSettings();
   setupEventListeners();
   syncSettingsFromDOM();
-  
+  loadVoice();
+
   // iOS等でWeb Speech APIをアクティベートするためのダミー発声準備
   window.addEventListener('touchstart', initSpeechSynthesis, { once: true });
   window.addEventListener('click', initSpeechSynthesis, { once: true });
@@ -132,12 +139,8 @@ function setupEventListeners() {
   });
 
   // 音声設定の同期
-  settingVoiceRead.addEventListener('change', () => {
-    state.voiceEnabled = settingVoiceRead.checked;
-  });
-  settingVoiceTap.addEventListener('change', () => {
-    state.voiceOnTapEnabled = settingVoiceTap.checked;
-  });
+  settingVoiceRead.addEventListener('change', syncSettingsFromDOM);
+  settingVoiceTap.addEventListener('change', syncSettingsFromDOM);
 
   // スタートボタン
   btnStart.addEventListener('click', startSession);
@@ -235,8 +238,8 @@ function syncSettingsFromDOM() {
           previewEl.innerText = previewText;
         }
       } else {
+        // チェックは外さずに隠すだけ（ひらがなに戻したとき選択が復元される）
         parentLabel.style.display = 'none';
-        cb.checked = false;
       }
     });
   } else {
@@ -254,10 +257,12 @@ function syncSettingsFromDOM() {
         const previewEl = parentLabel.querySelector('.row-preview');
         
         let nameText = KANA_DATA[rowKey].name;
-        let previewText = KANA_DATA[rowKey].chars.join('');
+        let previewText = KANA_DATA[rowKey].preview || KANA_DATA[rowKey].chars.join('');
 
         if (state.charType === 'katakana') {
           previewText = toKatakana(previewText);
+          // 「あ行」→「ア行」（だくおんの説明ラベルはひらがなのまま）
+          if (rowKey !== 'dakuon') nameText = toKatakana(nameText);
         }
 
         if (nameEl) nameEl.innerText = nameText;
@@ -269,10 +274,11 @@ function syncSettingsFromDOM() {
     });
   }
 
-  // 選択された行の集計
+  // 選択された行の集計（いまの文字の種類で表示されている行だけ）
+  const dataSource = isEnglish ? ENG_DATA : KANA_DATA;
   const activeRows = [];
   checkBoxes.forEach(cb => {
-    if (cb.checked) {
+    if (cb.checked && dataSource[cb.value]) {
       activeRows.push(cb.value);
     }
   });
@@ -288,6 +294,47 @@ function syncSettingsFromDOM() {
     btnStart.style.opacity = 1;
     btnStart.innerText = 'はじめる！ 🚀';
   }
+
+  saveSettings();
+}
+
+// 設定の保存・復元（毎回えらびなおさなくてよいように）
+function saveSettings() {
+  try {
+    const rows = [];
+    checkBoxes.forEach(cb => { if (cb.checked) rows.push(cb.value); });
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      charType: state.charType,
+      playMode: state.playMode,
+      rows: rows,
+      voiceRead: settingVoiceRead.checked,
+      voiceTap: settingVoiceTap.checked
+    }));
+  } catch (e) {
+    // プライベートブラウズ等で保存できなくても動作は続ける
+  }
+}
+
+function loadSettings() {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+  } catch (e) {
+    return;
+  }
+  if (!saved || typeof saved !== 'object') return;
+
+  radioCharTypes.forEach(r => { r.checked = r.value === saved.charType; });
+  if (!document.querySelector('input[name="char-type"]:checked')) radioCharTypes[0].checked = true;
+
+  radioPlayModes.forEach(r => { r.checked = r.value === saved.playMode; });
+  if (!document.querySelector('input[name="play-mode"]:checked')) radioPlayModes[0].checked = true;
+
+  if (Array.isArray(saved.rows)) {
+    checkBoxes.forEach(cb => { cb.checked = saved.rows.includes(cb.value); });
+  }
+  if (typeof saved.voiceRead === 'boolean') settingVoiceRead.checked = saved.voiceRead;
+  if (typeof saved.voiceTap === 'boolean') settingVoiceTap.checked = saved.voiceTap;
 }
 
 // 6. 音声合成 (Web Speech API)
@@ -322,20 +369,20 @@ function loadVoice() {
   }
 }
 
-function speakCharacter(char, bypassToggle = false) {
+function stopSpeech() {
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+}
+
+// lang: 'en' なら英語の声、それ以外は日本語の声で読む
+function speakText(text, lang) {
   if (!('speechSynthesis' in window)) return;
-  if (!bypassToggle && !state.voiceEnabled) return;
 
   // すでに喋っているのをキャンセル
   window.speechSynthesis.cancel();
 
-  // 英語モードの時は大文字読み（capital A等）を避けるため、すべて小文字に変換して発音させる
-  const isEnglish = state.charType.startsWith('english');
-  const textToSpeak = isEnglish ? char.toLowerCase() : char;
+  const utterance = new SpeechSynthesisUtterance(text);
 
-  const utterance = new SpeechSynthesisUtterance(textToSpeak);
-
-  if (isEnglish) {
+  if (lang === 'en') {
     if (speechVoiceEn) utterance.voice = speechVoiceEn;
     utterance.lang = 'en-US';
     utterance.pitch = 1.15;
@@ -350,9 +397,19 @@ function speakCharacter(char, bypassToggle = false) {
   window.speechSynthesis.speak(utterance);
 }
 
+function speakCharacter(char, bypassToggle = false) {
+  if (!bypassToggle && !state.voiceEnabled) return;
+
+  // 英語モードの時は大文字読み（capital A等）を避けるため、すべて小文字に変換して発音させる
+  const isEnglish = state.charType.startsWith('english');
+  speakText(isEnglish ? char.toLowerCase() : char, isEnglish ? 'en' : 'ja');
+}
+
 function speakCurrentCharacter(bypassToggle = false) {
-  if (state.sessionCharacters.length > 0) {
-    const currentCharObj = state.sessionCharacters[state.currentIndex];
+  // 遅延発声の間に「もどる」された場合は読まない
+  if (!screenPlay.classList.contains('active')) return;
+  const currentCharObj = state.sessionCharacters[state.currentIndex];
+  if (currentCharObj) {
     speakCharacter(currentCharObj.char, bypassToggle);
   }
 }
@@ -392,6 +449,9 @@ function startSession() {
   }
   
   state.currentIndex = 0;
+  state.endlessCount = 1;
+  state.isFinishing = false;
+  stopSpeech();
 
   // 4. 画面の更新と表示
   showScreen('play');
@@ -404,31 +464,43 @@ function startSession() {
 }
 
 function showNextCard() {
+  // 最後のカードの後に連打されてもクリア画面を重ねて出さない
+  if (state.isFinishing) return;
+
   triggerCelebrationConfetti();
 
-  state.currentIndex++;
-  
+  const isLast = state.currentIndex + 1 >= state.sessionCharacters.length;
+
   if (state.playMode === 'endless') {
-    if (state.currentIndex >= state.sessionCharacters.length) {
+    if (isLast) {
+      const lastObj = state.sessionCharacters[state.currentIndex];
       shuffleArray(state.sessionCharacters);
+      // シャッフル直後に同じ文字が続かないようにする
+      if (state.sessionCharacters.length > 1 && state.sessionCharacters[0] === lastObj) {
+        [state.sessionCharacters[0], state.sessionCharacters[1]] = [state.sessionCharacters[1], state.sessionCharacters[0]];
+      }
       state.currentIndex = 0;
-    }
-    updateCardUI();
-    setTimeout(() => {
-      speakCurrentCharacter();
-    }, 300);
-  } else {
-    if (state.currentIndex >= state.sessionCharacters.length) {
-      setTimeout(() => {
-        showClearScreen();
-      }, 500);
     } else {
-      updateCardUI();
-      setTimeout(() => {
-        speakCurrentCharacter();
-      }, 300);
+      state.currentIndex++;
     }
+    state.endlessCount++;
+  } else if (isLast) {
+    // currentIndex は範囲内に留める（遷移待ちの間にカードをタップしても落ちない）
+    state.isFinishing = true;
+    progressBar.style.width = '100%';
+    setTimeout(() => {
+      // 待っている間に「もどる」された場合はクリア画面を出さない
+      if (screenPlay.classList.contains('active')) showClearScreen();
+    }, 500);
+    return;
+  } else {
+    state.currentIndex++;
   }
+
+  updateCardUI();
+  setTimeout(() => {
+    speakCurrentCharacter();
+  }, 300);
 }
 
 function updateCardUI() {
@@ -440,17 +512,13 @@ function updateCardUI() {
   }
   displayCharacter.innerText = charToShow;
 
-  // 英語は文字幅が広めなので、はみ出し防止のためフォントサイズをやや小さく(12rem)
+  // 英語は文字幅が広めなので、はみ出し防止のためフォントをやや小さく（サイズは CSS 側でカードに追従）
   const isEnglish = state.charType.startsWith('english');
-  if (isEnglish) {
-    displayCharacter.style.fontSize = '12rem';
-  } else {
-    displayCharacter.style.fontSize = '15rem';
-  }
-  
+  displayCharacter.classList.toggle('is-english', isEnglish);
+
   // 残り枚数の更新
   if (state.playMode === 'endless') {
-    progressIndicator.innerText = `よんだかず: ${state.currentIndex + 1}もん`;
+    progressIndicator.innerText = `よんだかず: ${state.endlessCount}もん`;
     progressBar.style.width = `100%`;
   } else {
     progressIndicator.innerText = `${state.currentIndex + 1} / ${state.sessionCharacters.length}`;
@@ -528,6 +596,9 @@ function triggerFullClearConfetti() {
 
 // 9. 画面切り替え
 function showScreen(screenName) {
+  // 画面を離れるときは読み上げを止める（もどった後も喋り続けないように）
+  stopSpeech();
+
   screenSetup.classList.remove('active');
   screenPlay.classList.remove('active');
   screenClear.classList.remove('active');
@@ -547,8 +618,11 @@ function showClearScreen() {
   triggerFullClearConfetti();
   
   // クリアしたよ！のファンファーレボイス（Web Speech）- 設定にかかわらず発音させる
+  // 英語モードでも日本語の声で読む（speakCharacter だと英語の声で日本語を読んでしまう）
   setTimeout(() => {
-    speakCharacter('できたね！すごーい！がんばりました！', true);
+    if (screenClear.classList.contains('active')) {
+      speakText('できたね！すごーい！がんばりました！', 'ja');
+    }
   }, 500);
 }
 
